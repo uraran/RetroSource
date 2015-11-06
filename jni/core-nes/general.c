@@ -163,6 +163,8 @@ char *FCEU_MakeFName(int type, int id1, char *cd1) {
 			asprintf(&ret, "%s"PSS "gameinfo"PSS "%s.pal", BaseDirectory, FileBase);
 		break;
 #endif
+	case FCEUMKF_FDSROM:
+		return strdup("/mnt/ram/disksys.rom");
 	default:
 		ret=malloc(1);
 		*ret='\0';

@@ -2803,7 +2803,7 @@ void InitROM (void)
 			|| MATCH_ID("AXBE")		/* Bahamut Lagoon*/
 			|| MATCH_ID("ARQ")		/* Realm */
 			|| MATCH_NA("S O S")		/* SOS */
-			|| MATCH_NA("SUPER DONKEY KONG") /* Super Donkey Kong */
+//			|| MATCH_NA("SUPER DONKEY KONG") /* Super Donkey Kong */
 			|| MATCH_ID("AC6J")		/* Cu-On-Pa*/
 			|| MATCH_ID("ASR")		/* Street Racer*/
 			|| MATCH_NA("SUPER WIDGET")	/* Super Widget*/

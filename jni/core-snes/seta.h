@@ -17,11 +17,12 @@
 
   (c) Copyright 2002 - 2010  Brad Jorsch (anomie@users.sourceforge.net),
                              Nach (n-a-c-h@users.sourceforge.net),
-                             zones (kasumitokoduck@yahoo.com)
+
+  (c) Copyright 2002 - 2011  zones (kasumitokoduck@yahoo.com)
 
   (c) Copyright 2006 - 2007  nitsuja
 
-  (c) Copyright 2009 - 2010  BearOso,
+  (c) Copyright 2009 - 2011  BearOso,
                              OV2
 
 
@@ -130,7 +131,7 @@
   (c) Copyright 2006 - 2007  Shay Green
 
   GTK+ GUI code
-  (c) Copyright 2004 - 2010  BearOso
+  (c) Copyright 2004 - 2011  BearOso
 
   Win32 GUI code
   (c) Copyright 2003 - 2006  blip,
@@ -138,11 +139,11 @@
                              Matthew Kendora,
                              Nach,
                              nitsuja
-  (c) Copyright 2009 - 2010  OV2
+  (c) Copyright 2009 - 2011  OV2
 
   Mac OS GUI code
   (c) Copyright 1998 - 2001  John Stiles
-  (c) Copyright 2001 - 2010  zones
+  (c) Copyright 2001 - 2011  zones
 
 
   Specific ports contains the works of other authors. See headers in
@@ -177,6 +178,10 @@
 
 #ifndef _SETA_H_
 #define _SETA_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define ST_010	0x01
 #define ST_011	0x02
@@ -223,16 +228,20 @@ extern struct SST010	ST010;
 extern struct SST011	ST011;
 extern struct SST018	ST018;
 
-uint8 S9xGetST010 (uint32 Address);
-void S9xSetST010 (uint32 Address, uint8 Byte);
-uint8 S9xGetST011 (uint32 Address);
-void S9xSetST011 (uint32 Address, uint8 Byte);
-uint8 S9xGetST018 (uint32 Address);
-void S9xSetST018 (uint8 Byte, uint32 Address);
-uint8 S9xGetSetaDSP (uint32 Address);
-void S9xSetSetaDSP (uint8 Byte, uint32 Address);
+uint8 S9xGetST010 (uint32);
+void S9xSetST010 (uint32, uint8);
+uint8 S9xGetST011 (uint32);
+void S9xSetST011 (uint32, uint8);
+uint8 S9xGetST018 (uint32);
+void S9xSetST018 (uint8, uint32);
+uint8 S9xGetSetaDSP (uint32);
+void S9xSetSetaDSP (uint8, uint32);
 
-extern uint8 (*GetSETA) (uint32 Address);
-extern void (*SetSETA) (uint32 Address, uint8 Byte);
+extern uint8 (*GetSETA) (uint32);
+extern void (*SetSETA) (uint32, uint8);
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif

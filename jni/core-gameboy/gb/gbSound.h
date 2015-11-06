@@ -73,4 +73,6 @@ extern int soundTicks;          // Number of 16.8 MHz clocks until gbSoundTick()
 void gbSoundSaveGame( gzFile out );
 void gbSoundReadGame( int version, gzFile in );
 
+void gbSoundFlush();
+
 #endif // GBSOUND_H

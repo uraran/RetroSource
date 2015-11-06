@@ -12,6 +12,7 @@ extern bool mirroringEnable;
 extern bool enableRtc;
 extern bool skipSaveGameBattery; // skip battery data when reading save states
 extern bool renderEnabled;
+extern bool cheatsEnabled;
 
 extern int cpuDmaCount;
 

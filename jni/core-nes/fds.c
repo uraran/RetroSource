@@ -160,7 +160,7 @@ void FCEU_FDSSelect(void) {
 		return;
 	}
 	SelectDisk = ((SelectDisk + 1) % TotalSides) & 3;
-	FCEU_DispMessage("Disk %d Side %s Selected", SelectDisk >> 1, (SelectDisk & 1) ? "B" : "A");
+	FCEU_DispMessageReal("Disk %d Side %s Selected", SelectDisk >> 1, (SelectDisk & 1) ? "B" : "A");
 }
 
 static void FP_FASTAPASS(1) FDSFix(int a) {

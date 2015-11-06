@@ -28,6 +28,7 @@ static uint8 bufit[0x49];
 static uint8 ksmode;
 static uint8 ksindex;
 
+static uint8 rawbuf[9];
 
 static uint16 matrix[9][2][4] =
 {
@@ -65,9 +66,15 @@ static uint8 FP_FASTAPASS(2) FKB_Read(int w, uint8 ret) {
 		int x;
 
 		ret &= ~0x1E;
+
+		for(x = 0; x < 4; x++)
+			if(rawbuf[ksindex] & (1 << (x + ((ksmode & 1)*4))))
+				ret |= 1 << (x + 1);
+/*
 		for (x = 0; x < 4; x++)
 			if (bufit[ matrix[ksindex][ksmode & 1][x] & 0xFF ] || bufit[ matrix[ksindex][ksmode & 1][x] >> 8])
 				ret |= 1 << (x + 1);
+*/
 		ret ^= 0x1E;
 	}
 	return(ret);
@@ -79,7 +86,8 @@ static void FKB_Strobe(void) {
 }
 
 static void FP_FASTAPASS(2) FKB_Update(void *data, int arg) {
-	memcpy(bufit + 1, data, 0x48);
+//	memcpy(bufit + 1, data, 0x48);
+	memcpy(rawbuf, data, 9);
 }
 
 static INPUTCFC FKB = { FKB_Read, FKB_Write, FKB_Strobe, FKB_Update, 0, 0 };

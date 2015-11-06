@@ -751,10 +751,7 @@ static void GenMMC5_Init(CartInfo *info, int wsize, int battery) {
 
 	if (battery) {
 		info->SaveGame[0] = WRAM;
-		if (wsize <= 16)
-			info->SaveGameLen[0] = 8192;
-		else
-			info->SaveGameLen[0] = 32768;
+		info->SaveGameLen[0] = wsize * 1024;
 	}
 
 	MMC5HackVROMMask = CHRmask4[0];

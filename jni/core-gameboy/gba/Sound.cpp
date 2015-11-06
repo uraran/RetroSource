@@ -347,6 +347,7 @@ static void end_frame( blip_time_t time )
 	stereo_buffer->end_frame( time );
 }
 
+#if 0
 void flush_samples(Multi_Buffer * buffer)
 {
 	// We want to write the data frame by frame to support legacy audio drivers
@@ -372,6 +373,17 @@ void flush_samples(Multi_Buffer * buffer)
 		systemOnWriteDataToSoundBuffer(soundFinalWave, soundBufferLen);
 	}
 }
+#else
+void flush_samples(Multi_Buffer * buffer)
+{
+	int const out_buf_size = sizeof(soundFinalWave) / sizeof(int16_t);
+	while ( buffer->samples_avail() > 0 )
+	{
+		int numSamples = buffer->read_samples((blip_sample_t*) soundFinalWave, out_buf_size);
+		systemOnWriteDataToSoundBuffer(soundFinalWave, numSamples);
+	}
+}
+#endif
 
 static void apply_filtering()
 {

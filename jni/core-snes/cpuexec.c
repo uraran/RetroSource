@@ -378,8 +378,11 @@ static INLINE void speedhacks_manager (void)
    }
 }
 
+extern volatile int g_FrameEndCounter;
 static void S9xEndScreenRefresh (void)
 {
+	g_FrameEndCounter++;
+
 	FLUSH_REDRAW();
 
    PPU.GunVLatch = 1000; /* i.e., never latch */

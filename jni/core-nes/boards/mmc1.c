@@ -34,7 +34,7 @@ static void (*MMC1PRGHook16)(uint32 A, uint8 V);
 
 static uint8 *WRAM = NULL;
 static uint8 *CHRRAM = NULL;
-static int is155, is171;
+static int is155, is171, wramSize = 0;
 
 static DECLFW(MBWRAM) {
 	if (!(DRegs[3] & 0x10) || is155)
@@ -49,10 +49,19 @@ static DECLFR(MAWRAM) {
 
 static void MMC1CHR(void) {
 	if (mmc1opts & 4) {
+/*
 		if (DRegs[0] & 0x10)
 			setprg8r(0x10, 0x6000, (DRegs[1] >> 4) & 1);
 		else
 			setprg8r(0x10, 0x6000, (DRegs[1] >> 3) & 1);
+*/
+		int bank;
+		if(wramSize > 16384)
+			bank = (DRegs[1] >> 2) & 3;
+		else
+			bank = (DRegs[1] >> 3) & 1;
+		bank %= (wramSize / 8192);
+		setprg8r(0x10, 0x6000, bank);
 	}
 
 	if (MMC1CHRHook4) {
@@ -143,7 +152,7 @@ static DECLFW(MMC1_write) {
 	Buffer |= (V & 1) << (BufferShift++);
 
 	if (BufferShift == 5) {
-//		FCEU_printf("REG[%d]=%02x\n",n,Buffer);
+//		FCEU_printf("MMC1 REG[%d]=%02x\n",n,Buffer);
 		DRegs[n] = Buffer;
 		BufferShift = Buffer = 0;
 		switch (n) {
@@ -183,15 +192,22 @@ static int DetectMMC1WRAMSize(uint32 crc32) {
 	switch (crc32) {
 	case 0xc6182024:           /* Romance of the 3 Kingdoms */
 	case 0x2225c20f:           /* Genghis Khan */
+	case 0xFB69743A:		   /* Aoki Ookami to Shiroki Mejika - Genghis Khan (Japan) */
+	case 0x3F7AD415:		   /* Nobunaga no Yabou - Zenkoku Ban (Japan) */
+	case 0x2B11E0B0:
+	case 0xCCF35C02:		   /* Sangokushi (Japan) */
+	case 0xABBF7217:
 	case 0x4642dda6:           /* Nobunaga's Ambition */
-	case 0x29449ba9:           /* ""        "" (J) */
-	case 0x2b11e0b0:           /* ""        "" (J) */
-	case 0xb8747abf:           /* Best Play Pro Yakyuu Special (J) */
-	case 0xc9556b36:           /* Final Fantasy I & II (J) [!] */
-		FCEU_printf(" >8KB external WRAM present.  Use UNIF if you hack the ROM image.\n");
+	case 0x29449ba9:           /* Nobunaga no Yabou - Zenkoku Ban */
+	case 0x6377CB75:		   /* A Ressha de Ikou (Japan) */
 		return(16);
 		break;
-	default: return(8);
+	case 0xb8747abf:           /* Best Play Pro Yakyuu Special (J) */
+	case 0xc9556b36:           /* Final Fantasy I & II (J) [!] */
+		return(32);
+		break;
+	default:
+		return(8);
 	}
 }
 
@@ -246,9 +262,9 @@ static void GenMMC1Power(void) {
 	lreset = 0;
 	if (mmc1opts & 1) {
 		FCEU_CheatAddRAM(8, 0x6000, WRAM);
-		if (mmc1opts & 4)
+/*		if (mmc1opts & 4)
 			FCEU_dwmemset(WRAM, 0, 8192)
-			else if (!(mmc1opts & 2))
+			else*/ if (!(mmc1opts & 2))
 				FCEU_dwmemset(WRAM, 0, 8192);
 	}
 	SetWriteHandler(0x8000, 0xFFFF, MMC1_write);
@@ -282,15 +298,21 @@ static void GenMMC1Init(CartInfo *info, int prg, int chr, int wram, int battery)
 	CHRmask8[0] &= (chr >> 13) - 1;
 
 	if (wram) {
-		WRAM = (uint8*)FCEU_gmalloc(wram * 1024);
+		wramSize = wram * 1024;
+		WRAM = (uint8*)FCEU_gmalloc(wramSize);
+		memset(WRAM, 0xff, wramSize);
 		mmc1opts |= 1;
 		if (wram > 8) mmc1opts |= 4;
-		SetupCartPRGMapping(0x10, WRAM, wram * 1024, 1);
+		SetupCartPRGMapping(0x10, WRAM, wramSize, 1);
 		AddExState(WRAM, wram * 1024, 0, "WRAM");
 		if (battery) {
 			mmc1opts |= 2;
+/*
 			info->SaveGame[0] = WRAM + ((mmc1opts & 4) ? 8192 : 0);
 			info->SaveGameLen[0] = 8192;
+*/
+			info->SaveGame[0] = WRAM;
+			info->SaveGameLen[0] = wramSize;
 		}
 	}
 	if (!chr) {

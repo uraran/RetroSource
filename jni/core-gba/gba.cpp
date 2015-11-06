@@ -15,6 +15,7 @@
 #include "gba.h"
 #include "gba-memory.h"
 #include "sound.h" 
+#include "cheats.h"
 
 #ifdef ELF
 #include "elf.h"
@@ -231,6 +232,18 @@ static int gfxBG3Y = 0;
 
 static bool ioReadable[0x400];
 static int gbaSaveType = 0; // used to remember the save type on reset
+
+bool cheatsEnabled = false;
+static u32 mastercode = 0;
+static inline void cpuMasterCodeCheck()
+{
+#if 0
+  if((mastercode) && (mastercode == bus.armNextPC))
+  {
+    /*cpuTotalTicks += */cheatsCheckKeys(joy & 0x3FF, joy >> 10);
+  }
+#endif
+}
 
 //static int gfxLastVCOUNT = 0;
 
@@ -4229,6 +4242,9 @@ static int armExecute (void)
 
 	do
 	{
+		if( cheatsEnabled ) {
+			cpuMasterCodeCheck();
+		}
 
 		clockTicks = 0;
 
@@ -5959,6 +5975,10 @@ static int thumbExecute (void)
 	int ct = 0;
 
 	do {
+
+		if( cheatsEnabled ) {
+			cpuMasterCodeCheck();
+		}
 
 		clockTicks = 0;
 
@@ -12095,7 +12115,7 @@ static void CPUInterrupt(void)
 void CPULoop (void)
 {
 	bus.busPrefetchCount = 0;
-	int ticks = 250000;
+	int ticks = 280896;// 250000;
 	int timerOverflow = 0;
 	// variable used by the CPU core
 	cpuTotalTicks = 0;
@@ -12227,6 +12247,10 @@ updateLoop:
 							}
 						}
 
+						// If no (m) code is enabled, apply the cheats at each LCDline
+						if((cheatsEnabled)/* && (mastercode==0)*/)
+							/*remainingTicks += */cheatsCheckKeys(joy & 0x3FF, joy >> 10);
+
 						io_registers[REG_DISPSTAT] |= 1;
 						io_registers[REG_DISPSTAT] &= 0xFFFD;
 						UPDATE_REG(0x04, io_registers[REG_DISPSTAT]);
@@ -12282,7 +12306,7 @@ updateLoop:
 			soundTicks -= clockTicks;
 			if(!soundTicks)
 			{
-				process_sound_tick_fn();
+				process_sound_tick_fn(SOUND_CLOCK_TICKS);
 				soundTicks += SOUND_CLOCK_TICKS;
 			}
 
@@ -12530,3 +12554,5 @@ updateLoop:
 		}
 	}while(1);
 }
+
+#include "cheats.cpp"

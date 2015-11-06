@@ -60,7 +60,7 @@ static uint32 FixX(uint32 x) {
 
 static void FP_FASTAPASS(2) UpdateARKFC(void *data, int arg) {
 	uint32 *ptr = (uint32*)data;
-	FCArk.mzx = FixX(ptr[0]);
+	FCArk.mzx = ptr[0];//FixX(ptr[0]);
 	FCArk.mzb = ptr[2] ? 1 : 0;
 }
 
@@ -93,7 +93,7 @@ static void FP_FASTAPASS(1) StrobeARK(int w) {
 
 static void FP_FASTAPASS(3) UpdateARK(int w, void *data, int arg) {
 	uint32 *ptr = (uint32*)data;
-	NESArk[w].mzx = FixX(ptr[0]);
+	NESArk[w].mzx = ptr[0];//FixX(ptr[0]);
 	NESArk[w].mzb = ptr[2] ? 1 : 0;
 }
 

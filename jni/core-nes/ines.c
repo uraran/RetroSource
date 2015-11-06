@@ -756,12 +756,6 @@ int iNESLoad(const char *name, FCEUFILE *fp) {
 		}
 	}
 
-	FCEU_printf(" Mapper #:  %d\n", MapperNo);
-	FCEU_printf(" Mapper name: %s\n", mappername);
-	FCEU_printf(" Mirroring: %s\n", Mirroring == 2 ? "None (Four-screen)" : Mirroring ? "Vertical" : "Horizontal");
-	FCEU_printf(" Battery-backed: %s\n", (head.ROM_type & 2) ? "Yes" : "No");
-	FCEU_printf(" Trained: %s\n", (head.ROM_type & 4) ? "Yes" : "No");
-
 	SetInput();
 	CheckHInfo();
 	{
@@ -788,8 +782,14 @@ int iNESLoad(const char *name, FCEUFILE *fp) {
 	else
 		SetupCartMirroring(Mirroring & 1, (Mirroring & 4) >> 2, 0);
 
-	iNESCart.battery = (head.ROM_type & 2) ? 1 : 0;
+	iNESCart.battery = ((head.ROM_type & 2) || head.reserve[0]) ? 1 : 0;
 	iNESCart.mirror = Mirroring;
+
+	FCEU_printf(" Mapper #:  %d\n", MapperNo);
+	FCEU_printf(" Mapper name: %s\n", mappername);
+	FCEU_printf(" Mirroring: %s\n", Mirroring == 2 ? "None (Four-screen)" : Mirroring ? "Vertical" : "Horizontal");
+	FCEU_printf(" Battery-backed: %s\n", (iNESCart.battery) ? "Yes" : "No");
+	FCEU_printf(" Trained: %s\n", (head.ROM_type & 4) ? "Yes" : "No");
 
 	if (!iNES_Init(MapperNo))
 		FCEU_PrintError("iNES mapper #%d is not supported at all.", MapperNo);

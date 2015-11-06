@@ -122,7 +122,8 @@ void soundEvent_u8( int gb_addr, uint32_t addr, uint8_t  data );
 void soundEvent_u8_parallel(int gb_addr[], uint32_t address[], uint8_t data[]);
 void soundEvent_u16( uint32_t addr, uint16_t data );
 void soundTimerOverflow( int which );
-void process_sound_tick_fn (void);
+void process_sound_tick_fn (int ticks);
+void sound_flush();
 void soundSaveGameMem(uint8_t *& data);
 void soundReadGameMem(const uint8_t *& data, int version);
 

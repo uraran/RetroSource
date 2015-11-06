@@ -28,6 +28,9 @@ LOCAL_SRC_FILES := \
 	sa1.c \
 	sdd1.c \
 	seta.c \
+	seta010.cpp \
+	seta011.cpp \
+	seta018.cpp \
 	snapshot.c \
 	spc7110.c \
 	srtc.c \

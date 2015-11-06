@@ -1,6 +1,7 @@
 #define NES_DISP_WIDTH		256
 #define NES_DISP_HEIGHT		240
 #define NES_SOUND_RATE		32050
+#define NES_SOUND_TWEAK		2
 #define BIT(b)				(1 << b)
 #define NES_HEADER_MAGIC	(0x1A53454E)
 
@@ -35,6 +36,8 @@ extern FCEUGI *FCEUGameInfo;
 extern uint8 *XBuf;
 extern CartInfo iNESCart;
 extern CartInfo UNIFCart;
+extern int FamiMic;
+extern uint32 iNESGameCRC32;
 
 static uint16_t palette[256];
 void mallocInit(t_emuAllocators *allocators);
@@ -55,7 +58,7 @@ public:
 	virtual bool loadNvm(const char *file);
 	virtual bool saveSnapshot(const char *file);
 	virtual bool loadSnapshot(const char *file);
-	virtual void runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount);
+	virtual void runFrame(cEmuBitmap *curBitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount);
 	virtual bool setOption(const char *name, const char *value);
 	virtual bool addCheat(const char *cheat);
 	virtual bool removeCheat(const char *cheat);
@@ -63,22 +66,41 @@ public:
 
 private:
 
+	const static int ADC_HISTORY_SIZE = 3;
+
 	uint32 crc32(uint32 crc, uint8 *buf, int len);
 	void updateCRCs();
 
 	static uint32 crc32Tab[256];
 
 	bool mDisplayOverscan;
+	bool mVausFilter;
+	bool mFdsSwitchPending, mNesMicPending;
+	bool mForceShowOverscan;
 	uint32 mSaveCRC[4];
 	bool mNvmDirty;
 	uint8 mJoypad[4];
+	uint8 mFKBKeys[9];
+	uint8 mHypershot;
+	uint32 mArkanoidState[3];
+	uint8 mAdcHistory[ADC_HISTORY_SIZE];
+	uint32 mPowerPadState;
 	t_romInfo mRomInfo;
 };
 
 NESEngine::NESEngine()
 {
 	mDisplayOverscan = false;
+	mVausFilter = false;
+	mFdsSwitchPending = false;
+	mNesMicPending = false;
+	mForceShowOverscan = false;
 	memset(mJoypad, 0, sizeof(mJoypad));
+	memset(mFKBKeys, 0, sizeof(mFKBKeys));
+	memset(mArkanoidState, 0, sizeof(mArkanoidState));
+	memset(mAdcHistory, 0, sizeof(mAdcHistory));
+	mHypershot = 0;
+	mPowerPadState = 0;
 	mSaveCRC[0] = mSaveCRC[1] = mSaveCRC[2] = mSaveCRC[3] = -1;
 	mNvmDirty = false;
 }
@@ -96,7 +118,7 @@ bool NESEngine::initialise(t_pluginInfo *info)
 		return false;
 	}
 	FCEUI_SetSoundVolume(256);
-	FCEUI_Sound(NES_SOUND_RATE);
+	FCEUI_Sound(NES_SOUND_RATE+NES_SOUND_TWEAK);
 
 	info->maxWidth = 256;
 	info->maxHeight = 256;
@@ -158,8 +180,36 @@ t_romInfo *NESEngine::loadRomFile(const char *file, t_systemRegion systemRegion)
 		LOGE("FCEUI_LoadGame failed");
 		return NULL;
 	}
+
+	// first map defaults
+	int defInput[2] = { FCEUGameInfo->input[0], FCEUGameInfo->input[1] };
+	LOGI("NES input: %d, %d, %d\n", FCEUGameInfo->input[0], FCEUGameInfo->input[1], FCEUGameInfo->inputfc);
 	FCEUI_SetInput(0, SI_GAMEPAD, mJoypad, 0);
 	FCEUI_SetInput(1, SI_GAMEPAD, mJoypad, 0);
+
+	// then take care of special FC input devices
+	if(FCEUGameInfo->inputfc == SIFC_FKB)
+	{
+		FCEUI_SetInputFC(SIFC_FKB, mFKBKeys, 0);
+	}
+	else if(FCEUGameInfo->inputfc == SIFC_HYPERSHOT)
+	{
+		FCEUI_SetInputFC(SIFC_HYPERSHOT, &mHypershot, 0);
+	}
+	else if(FCEUGameInfo->inputfc == SIFC_ARKANOID)
+	{
+		FCEUI_SetInputFC(SIFC_ARKANOID, mArkanoidState, 0);
+	}
+
+	// then special NES input devices
+	if(defInput[1] == SI_ARKANOID)
+	{
+		FCEUI_SetInput(1, SI_ARKANOID, mArkanoidState, 0);
+	}
+	else if(defInput[1] == SI_POWERPADB)
+	{
+		FCEUI_SetInput(1, SI_POWERPADB, &mPowerPadState, 0);
+	}
 
 	mRomInfo.fps = (PAL) ? 838977920.0 / 16777215.0 : 1008307711.0 / 16777215.0;
 	mRomInfo.aspectRatio = 4.0 / 3.0;
@@ -173,6 +223,43 @@ t_romInfo *NESEngine::loadRomFile(const char *file, t_systemRegion systemRegion)
 	else
 	{
 		LOGI("NES rom video mode: NTSC\n");
+	}
+
+	if(FCEUGameInfo->type == GIT_FDS)
+	{
+		uint8_t forceOverscanMD5[][16] = {
+			{ 0xE7, 0x38, 0x8F, 0x78, 0x26, 0x4C, 0x28, 0x2B, 0xB3, 0xE9, 0xA3, 0x47, 0x1E, 0x0D, 0xB3, 0xAC }, // Yuu Maze
+		};
+		for(int i = 0; i < sizeof(forceOverscanMD5)/16; i++)
+			if(!memcmp(&forceOverscanMD5[i][0], FCEUGameInfo->MD5, 16))
+			{
+				mForceShowOverscan = true;
+				break;
+			}
+	}
+	else
+	{
+		switch(iNESGameCRC32)
+		{
+		// Arkanoid II
+		case 0x20F98F2A:
+		case 0x0F141525:
+		case 0xFC8DEBEF:
+		// Chiisana Obake - Acchi Socchi Kocchi (J)
+		case 0x5DEC84F8:
+		// Kero Kero Keroppi no Dai Bouken (J)
+		case 0xEB465156:
+		// Ninjara Hoi! (J)
+		case 0xCEE5857B:
+		// Gekikame Ninja Den (J)
+		case 0x64A02715:
+		// Super Black Onyx (J)
+		case 0xDFC0CE21:
+		// Sword Master (J)
+		case 0xDF3776C6:
+			mForceShowOverscan = true;
+			break;
+		}
 	}
 
 	return &mRomInfo;
@@ -261,12 +348,125 @@ bool NESEngine::loadSnapshot(const char *file)
 	return true;
 }
 
-void NESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount)
+void NESEngine::runFrame(cEmuBitmap *curBitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount)
 {
+	static int latchedPadState = 0, fdsCycleCounter = 0;
 	unsigned y, x, width, height, xoff, yoff;
 	uint8_t *gfx;
 	int32 *sound = 0;
 	int32 ssize;
+
+	// FDS disk swapping logic
+	if(FCEUGameInfo->type == GIT_FDS && mFdsSwitchPending && fdsCycleCounter == 0)
+	{
+		LOGI("got FDS swap side cmd\n");
+		mFdsSwitchPending = false;
+		fdsCycleCounter = 120;
+		FCEU_FDSInsert(0);
+	}
+	else if(fdsCycleCounter == 110)
+	{
+		FCEU_FDSSelect();
+	}
+	else if(fdsCycleCounter == 1)
+	{
+		FCEU_FDSInsert(0);
+	}
+	if(fdsCycleCounter > 0) fdsCycleCounter--;
+	latchedPadState = ctrlState.padState[0];
+
+	memset(&mFKBKeys, 0, sizeof(mFKBKeys));
+	for(int i = 0; i < ctrlState.specialStateNum; i++)
+	{
+		if(ctrlState.specialStates[i]->type == INPUT_FAMI_KEYBOARD && ctrlState.specialStates[i]->stateLen == sizeof(t_emuInputFamiKeyboardState))
+		{
+			t_emuInputFamiKeyboardState *state = (t_emuInputFamiKeyboardState *)ctrlState.specialStates[i];
+			memcpy(mFKBKeys, state->data, sizeof(state->data));
+			break;
+		}
+		else if(ctrlState.specialStates[i]->type == INPUT_RAW_PORTS && ctrlState.specialStates[i]->stateLen == sizeof(t_emuInputRawPortState))
+		{
+			t_emuInputRawPortState *state = (t_emuInputRawPortState *)ctrlState.specialStates[i];
+			if(FCEUGameInfo->inputfc == SIFC_HYPERSHOT)
+			{
+				mHypershot = 0;
+				if(!(state->famiRawState & 0x02))
+					mHypershot |= 0x01;
+				if(!(state->famiRawState & 0x04))
+					mHypershot |= 0x02;
+				if(!(state->famiRawState & 0x08))
+					mHypershot |= 0x04;
+				if(!(state->famiRawState & 0x10))
+					mHypershot |= 0x08;
+			}
+			else if(FCEUGameInfo->inputfc == SIFC_ARKANOID || FCEUGameInfo->input[1] == SI_ARKANOID)
+			{
+				uint8_t thisADC = state->famiP2D1Strobed;
+
+				if(mVausFilter)
+				{
+					// shift FIFO
+					for(int i = 0; i < (ADC_HISTORY_SIZE - 1); i++)
+						mAdcHistory[i] = mAdcHistory[i+1];
+					mAdcHistory[ADC_HISTORY_SIZE-1] = thisADC;
+
+					// account for wrapping
+					if(thisADC < 0x10 || thisADC > 0xf0)
+						memset(mAdcHistory, thisADC, sizeof(mAdcHistory));
+
+					// calculate average
+					uint32_t adcAverage = 0;
+					for(int i = 0; i < ADC_HISTORY_SIZE; i++)
+						adcAverage += mAdcHistory[i];
+					adcAverage /= ADC_HISTORY_SIZE;
+
+					mArkanoidState[0] = adcAverage;
+				}
+				else
+					mArkanoidState[0] = thisADC;
+
+				mArkanoidState[2] = state->famiP1D1Strobed;
+//				LOGI("arkanoid state:%02X/%02X %02X\n", mArkanoidState[0], thisADC, mArkanoidState[2]);
+			}
+			else if(FCEUGameInfo->input[1] == SI_POWERPADB)
+			{
+				mPowerPadState = 0;
+				if(state->nesD2Strobed & 0x40)
+					mPowerPadState |= (1 << 0);
+				if(state->nesD2Strobed & 0x80)
+					mPowerPadState |= (1 << 1);
+				if(state->nesD3Strobed & 0x40)
+					mPowerPadState |= (1 << 2);
+				if(state->nesD3Strobed & 0x80)
+					mPowerPadState |= (1 << 3);
+				if(state->nesD2Strobed & 0x20)
+					mPowerPadState |= (1 << 4);
+				if(state->nesD2Strobed & 0x08)
+					mPowerPadState |= (1 << 5);
+				if(state->nesD2Strobed & 0x01)
+					mPowerPadState |= (1 << 6);
+				if(state->nesD3Strobed & 0x10)
+					mPowerPadState |= (1 << 7);
+				if(state->nesD2Strobed & 0x10)
+					mPowerPadState |= (1 << 8);
+				if(state->nesD2Strobed & 0x04)
+					mPowerPadState |= (1 << 9);
+				if(state->nesD2Strobed & 0x02)
+					mPowerPadState |= (1 << 10);
+				if(state->nesD3Strobed & 0x20)
+					mPowerPadState |= (1 << 11);
+//				LOGI("mPowerPadState = %04X\n", mPowerPadState);
+			}
+		}
+	}
+
+	if(mNesMicPending)
+	{
+		FamiMic = 1;
+		mNesMicPending = false;
+	}
+	else
+		FamiMic = 0;
 
 	int padCnt = 0;
 	if(ctrlState.padConnectMask & ~3)
@@ -298,7 +498,7 @@ void NESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, 
 	ssize = 0;
 	FCEUI_Emulate(&gfx, &sound, &ssize, 0);
 
-	if(mDisplayOverscan)
+	if(mDisplayOverscan || mForceShowOverscan)
 	{
 		// overscan shown
 		width = 256;
@@ -309,9 +509,9 @@ void NESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, 
 	else
 	{
 		// overscan hidden
-		width = 256;
+		width = 256 - 16;
 		height = 240 - 16;
-		xoff = 0;
+		xoff = 8;
 		yoff = 8;
 	}
 
@@ -336,6 +536,23 @@ void NESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, 
 		}
 		*soundSampleByteCount = ssize * 2 * 2;
     }
+
+#if 0
+	// sound output verification
+	{
+		static int sampleCounter = 0;
+		static int frameCounter = 0;
+
+		sampleCounter += ssize;
+		frameCounter++;
+		if(frameCounter == 60)
+		{
+			LOGI("nes sound stats: %d\n", sampleCounter);
+			sampleCounter = 0;
+			frameCounter = 0;
+		}
+	}
+#endif
 }
 
 bool getBoolFromString(const char *str)
@@ -353,15 +570,31 @@ bool NESEngine::setOption(const char *name, const char *value)
 		mDisplayOverscan = getBoolFromString(value);
 		return true;
 	}
+	else if(!strcasecmp(name, PLUGINOPT_NES_ENABLE_VAUSFILTER))
+	{
+		mVausFilter = getBoolFromString(value);
+		return true;
+	}
+	else if(!strcasecmp(name, PLUGINOPT_NES_FDS_SWITCH_SIDE))
+	{
+		mFdsSwitchPending = true;
+		return true;
+	}
+	else if(!strcasecmp(name, PLUGINOPT_NES_MICROPHONE))
+	{
+		mNesMicPending = true;
+		return true;
+	}
 
 	return false;
 }
 
 bool NESEngine::addCheat(const char *cheat)
 {
+	static const uint8_t parShiftTab[] = { 15, 3, 13, 14, 1, 6, 9, 5, 0, 12, 7, 2, 8, 10, 11, 4, 19, 21, 23, 22, 20, 17, 16, 18, 29, 31, 24, 26, 25, 30, 27, 28 };
 	char *scheat = strdup(cheat), *s_format, *s_addr, *s_val;
 	uint32_t addr;
-	uint8_t val;
+	uint8_t val, cmp;
 	bool ret = false;
 
 	s_format = strtok((char *)scheat, ";");
@@ -370,27 +603,62 @@ bool NESEngine::addCheat(const char *cheat)
 		LOGE("cheat parse error 1\n");
 		goto addCheat_end;
 	}
-	s_addr = strtok(NULL, ":");
-	if(!s_addr)
+	if(!strcasecmp(s_format, "raw"))
 	{
-		LOGE("cheat parse error 2\n");
-		goto addCheat_end;
+		s_addr = strtok(NULL, ":");
+		if(!s_addr)
+		{
+			LOGE("cheat parse error 2\n");
+			goto addCheat_end;
+		}
+		s_val = strtok(NULL, ":");
+		if(!s_val)
+		{
+			LOGE("cheat parse error 3\n");
+			goto addCheat_end;
+		}
+		addr = strtol(s_addr, NULL, 16);
+		val = strtol(s_val, NULL, 16);
+		LOGI("raw code: %04X:%02X\n", addr, val);
+		FCEUI_AddCheat("", addr, val, -1, (addr < 0x0100) ? 0 : 1);
 	}
-	s_val = strtok(NULL, ":");
-	if(!s_val)
+	else if(!strcasecmp(s_format, "par"))
 	{
-		LOGE("cheat parse error 3\n");
-		goto addCheat_end;
+		s_addr = strtok(NULL, ":");
+		if(!s_addr)
+		{
+			LOGE("cheat parse error 2\n");
+			goto addCheat_end;
+		}
+		addr = strtoll(s_addr, NULL, 16);
+//		LOGI("PAR enc: %08X\n", addr);
+
+		uint32_t raw = 0;
+		addr ^= 0xFCBDD275;
+		for(int i = 31; i >= 0; i--)
+		{
+			if(addr & 0x80000000)
+			{
+				raw += 1 << parShiftTab[i];
+				addr ^= 0xB8309722;
+			}
+			addr <<= 1;
+		}
+		raw |= 0x8000;
+//		LOGI("dec: %08X\n", raw);
+
+		val = raw >> 24;
+		cmp = raw >> 16;
+		addr = raw & 0xffff;
+		LOGI("par code: %04X:%02X:%02X\n", addr, cmp, val);
+		FCEUI_AddCheat("", addr, val, cmp, 1);
 	}
-	if(strcasecmp(s_format, "raw"))
+	else
 	{
 		LOGE("unsupported format: %s\n", s_format);
 		goto addCheat_end;
 	}
-	addr = strtol(s_addr, NULL, 16);
-	val = strtol(s_val, NULL, 16);
-	LOGI("code: %s, %04X:%02X\n", s_format, addr, val);
-	FCEUI_AddCheat("", addr, val, -1, (addr < 0x0100) ? 0 : 1);
+
 	ret = true;
 
 addCheat_end:

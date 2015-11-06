@@ -27,16 +27,6 @@ typedef enum
 
 typedef enum
 {
-	SYS_SMS = 1,
-	SYS_GAMEBOY = 2,
-	SYS_NES = 3,
-	SYS_SNES = 4,
-	SYS_MEGADRIVE = 5,
-	SYS_GBA = 6,
-} t_systemType;
-
-typedef enum
-{
 	BTN_UP 			= (1 << 0),
 	BTN_DOWN 		= (1 << 1),
 	BTN_LEFT 		= (1 << 2),
@@ -53,23 +43,56 @@ typedef enum
 	BTN_BUTTON_RT	= (1 << 13),
 } t_emuButtons;
 
+typedef enum
+{
+	INPUT_SNES_MOUSE 			= 100,
+	INPUT_FAMI_KEYBOARD 		= 101,
+	INPUT_RAW_PORTS 			= 102,
+} t_emuInputSpecialDevice;
+
+typedef struct
+{
+	t_emuInputSpecialDevice type;
+	uint32_t stateLen;
+} t_emuInputSpecialInputHdr;
+
 #define MOUSE_BUTTON_LEFT		0x01
 #define MOUSE_BUTTON_RIGHT		0x02
+typedef struct
+{
+	t_emuInputSpecialInputHdr hdr;
+	uint8_t connected;
+	uint8_t buttons;
+	uint16_t xoff;
+	uint16_t yoff;
+} t_emuInputMouseState;
+
+typedef struct
+{
+	t_emuInputSpecialInputHdr hdr;
+	uint8_t data[9];
+} t_emuInputFamiKeyboardState;
+
+typedef struct
+{
+	t_emuInputSpecialInputHdr hdr;
+	uint8_t nesD2Strobed;
+	uint8_t nesD3Strobed;
+	uint8_t famiP1D1Strobed;
+	uint8_t famiP2D1Strobed;
+	uint8_t famiRawState;
+} t_emuInputRawPortState;
 
 typedef struct
 {
 	int padConnectMask;
 	unsigned int padState[5];
-	struct
-	{
-		int connected;
-		uint8_t buttons;
-		int xoff;
-		int yoff;
-	} mouse;
-} t_emuControllerState;
+	int specialStateNum;
+	t_emuInputSpecialInputHdr **specialStates;
+} t_emuInputState;
 
 #define PLUGINOPT_OVERSCAN			"opt_overscan"
+#define PLUGINOPT_AUDIO_LOWLATENCY	"gameset_audio_lowlatency"
 
 // Gameboy plugin specific
 #define PLUGINOPT_GB_SGB_BORDER		"gameset_gb_sgb_borders"
@@ -77,7 +100,15 @@ typedef struct
 #define PLUGINOPT_GB_PALETTE		"gameset_gb_palette"
 
 // SMS plugin specific
-#define PLUGINOPT_SMS_DISABLE_FM	"gameset_sms_disable_fm"
+#define PLUGINOPT_SMS_ENABLE_FM		"gameset_sms_enable_fm"
+
+// PCE plugin specific
+#define PLUGINOPT_PCE_ENABLE_6BUTTON "gameset_pce_enable_6_button"
+
+// NES plugin specific
+#define PLUGINOPT_NES_ENABLE_VAUSFILTER "gameset_nes_enable_vausfilter"
+#define PLUGINOPT_NES_FDS_SWITCH_SIDE	"gameset_nes_fds_switch_side"
+#define PLUGINOPT_NES_MICROPHONE		"gameset_nes_set_microphone"
 
 #define PLUGINOPT_TRUE				"true"
 #define PLUGINOPT_FALSE				"false"
@@ -92,6 +123,8 @@ typedef struct
 	void* (*p_realloc)(void *ptr, size_t size);
 	void* (*p_memalign)(size_t alignment, size_t size);
 } t_emuAllocators;
+
+typedef void (*t_statusUpdateCb)(void *args, int percentage);
 
 class cEmuBitmap;
 class cEmulatorPlugin
@@ -118,7 +151,7 @@ public:
 	 * soundBuffer          - points to sample buffer provided by engine, where plugin should write sample data for the current frame
 	 * soundSampleByteCount - plugin will set this value to the number of sample bytes placed in the soundBuffer for the current frame
 	 */
-	virtual void runFrame(cEmuBitmap *bitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount) = 0;
+	virtual void runFrame(cEmuBitmap *bitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount) = 0;
 
 	// save/load non-volatile memory such as SRAM etc
 	virtual bool isNvmDirty() = 0;

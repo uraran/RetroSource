@@ -17,6 +17,7 @@
 #include "gba-memory.h"
 #include "sound.h"
 #include "globals.h"
+#include "cheats.h"
 
 #define GBA_WIDTH		(240)
 #define GBA_HEIGHT		(160)
@@ -56,7 +57,7 @@ public:
 	virtual bool loadNvm(const char *file);
 	virtual bool saveSnapshot(const char *file);
 	virtual bool loadSnapshot(const char *file);
-	virtual void runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount);
+	virtual void runFrame(cEmuBitmap *curBitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount);
 	virtual bool setOption(const char *name, const char *value);
 	virtual bool addCheat(const char *cheat);
 	virtual bool removeCheat(const char *cheat);
@@ -307,7 +308,7 @@ bool GbaEngine::loadSnapshot(const char *file)
 	return ret;
 }
 
-void GbaEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount)
+void GbaEngine::runFrame(cEmuBitmap *curBitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount)
 {
 	if(curBitmap == NULL)
 	{
@@ -351,19 +352,41 @@ void GbaEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, 
 		CPULoop();
 		if(frameEndFlag == true)
 			break;
+//		LOGI("emuMain returned without rendering a frame!\n");
 	}
 //	LOGI("frame end\n");
+	sound_flush();
 	if(soundBuffer)
 	{
 		memcpy(soundBuffer, sampleBuffer, sampleCurrentBytes);
 		*soundSampleByteCount = sampleCurrentBytes;
 	}
+	
+#if 0
+	// sound output verification
+	{
+		static int sampleCounter = 0;
+		static int frameCounter = 0;
+
+		sampleCounter += sampleCurrentBytes / 4;
+		frameCounter++;
+		if(frameCounter == 60)
+		{
+			LOGI("gameboy sound stats: %d\n", sampleCounter);
+			sampleCounter = 0;
+			frameCounter = 0;
+		}
+	}
+#endif
 }	
 
 void GbaEngine::drawScreen()
 {
 	if(frameEndFlag)
+	{
+		LOGE("rendering called multiple times this iteration!\n");
 		return;
+	}
 
 	if(thisBitmap)
 	{
@@ -388,7 +411,68 @@ bool GbaEngine::setOption(const char *name, const char *value)
 
 bool GbaEngine::addCheat(const char *cheat)
 {
-	return false;
+	char *scheat = strdup(cheat), *s_format, *s_addr, *s_val;
+	uint32_t addr;
+	uint32_t val;
+	bool ret = false;
+
+	s_format = strtok((char *)scheat, ";");
+	if(!s_format)
+	{
+		LOGE("cheat parse error 1\n");
+		goto addCheat_end;
+	}
+	s_addr = strtok(NULL, ":");
+	if(!s_addr)
+	{
+		LOGE("cheat parse error 2\n");
+		goto addCheat_end;
+	}
+	s_val = strtok(NULL, ":");
+	if(!s_val)
+	{
+		LOGE("cheat parse error 3\n");
+		goto addCheat_end;
+	}
+
+	addr = strtoll(s_addr, NULL, 16);
+	val = strtoll(s_val, NULL, 16);
+	LOGI("code: %s, %08X:%08X\n", s_format, addr, val);
+
+	char combinedCode[32];
+	if(!strcasecmp(s_format, "CB"))
+	{
+		sprintf(combinedCode, "%08X %04X", addr, val);
+		ret = cheatsAddCBACode(combinedCode, "");
+	}
+	else if(!strcasecmp(s_format, "AR12"))
+	{
+		sprintf(combinedCode, "%08X%08X", addr, val);
+		ret = cheatsAddGSACode(combinedCode, "", false, false);
+	}
+	else if(!strcasecmp(s_format, "AR34"))
+	{
+		sprintf(combinedCode, "%08X%08X", addr, val);
+		ret = cheatsAddGSACode(combinedCode, "", true, false);
+	}
+	else if(!strcasecmp(s_format, "PAR"))
+	{
+		sprintf(combinedCode, "%08X%08X", addr, val);
+		ret = cheatsAddGSACode(combinedCode, "", false, true);
+	}
+	else
+	{
+		LOGE("unsupported format: %s\n", s_format);
+		ret = false;
+	}
+
+	if(ret == true)
+		cheatsEnabled = true;
+
+	LOGI("cheat add ret: %d\n", ret);
+addCheat_end:
+	free(scheat);
+	return ret;
 }
 
 bool GbaEngine::removeCheat(const char *cheat)
@@ -398,7 +482,8 @@ bool GbaEngine::removeCheat(const char *cheat)
 
 void GbaEngine::resetCheats()
 {
-
+	cheatsDeleteAll(true);
+	cheatsEnabled = false;
 }
 
 extern "C" __attribute__((visibility("default")))
@@ -456,10 +541,11 @@ void systemMessage(const char* str, ...)
    LOGI(str);
 }
 */
-
 void GbaEngine::configureInterframe()
 {
 	const static char *needInterframeGames[] = {
+		"B9AJ",		// Kunio Kun Nekketsu Collection 1 (Japan)
+		"B9BJ",		// Kunio Kun Nekketsu Collection 2 (Japan)
 		"B9CJ",		// Kunio Kun Nekketsu Collection 3 (Japan)
 		"BJCJ",		// Moero!! Jaleco Collection (Japan)
 		"AYCE",		// Phantasy Star Collection (USA)

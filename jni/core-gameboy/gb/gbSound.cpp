@@ -103,6 +103,14 @@ void gbSoundTick()
 	}
 }
 
+void gbSoundFlush()
+{
+	if (!gb_apu || !stereo_buffer )
+		return;
+
+	flush_samples(stereo_buffer);
+}
+
 static void reset_apu()
 {
 	Gb_Apu::mode_t mode = Gb_Apu::mode_dmg;
@@ -170,7 +178,7 @@ bool gbSoundGetDeclicking()
 
 void gbSoundReset()
 {
-	SOUND_CLOCK_TICKS = 20000; // 1/100 second
+	SOUND_CLOCK_TICKS = 17556;
 
 	remake_stereo_buffer();
 	reset_apu();

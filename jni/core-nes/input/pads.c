@@ -26,6 +26,8 @@
 static uint8 joy_readbit[2];
 static uint8 joy[4] = { 0, 0, 0, 0 };
 
+int FamiMic = 0;
+static int MicToggle = 1;
 static int FSDisable = 0;  /* Set to 1 if NES-style four-player adapter is disabled. */
 void FCEUI_DisableFourScore(int s) {
 	FSDisable = s;
@@ -82,6 +84,19 @@ static uint8 FP_FASTAPASS(1) ReadGP(int w) {
 	#ifdef FCEUDEF_DEBUGGER
 	if (!fceuindbg)
 	#endif
+
+	if(!w)
+	{
+		if(FamiMic)
+		{
+			if(MicToggle)
+				ret |= 0x04;
+			MicToggle ^= 1;
+		}
+		else
+			MicToggle = 1;
+	}
+
 	joy_readbit[w]++;
 	return ret;
 }

@@ -46,8 +46,7 @@ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA */
 #define NR51 0x81
 #define NR52 0x84
 
-/* 1/100th of a second */
-#define SOUND_CLOCK_TICKS_ 167772 
+#define SOUND_CLOCK_TICKS_ 140448
 #define SOUNDVOLUME 0.5f
 #define SOUNDVOLUME_ -1
 
@@ -1938,31 +1937,35 @@ void soundTimerOverflow(int timer)
 		gba_pcm_fifo_timer_overflowed(1);
 }
 
-void process_sound_tick_fn (void)
+void process_sound_tick_fn (int ticks)
 {
 	// Run sound hardware to present
-	pcm[0].pcm.last_time -= SOUND_CLOCK_TICKS;
+	pcm[0].pcm.last_time -= ticks;
 	if ( pcm[0].pcm.last_time < -2048 )
 		pcm[0].pcm.last_time = -2048;
 
-	pcm[1].pcm.last_time -= SOUND_CLOCK_TICKS;
+	pcm[1].pcm.last_time -= ticks;
 	if ( pcm[1].pcm.last_time < -2048 )
 		pcm[1].pcm.last_time = -2048;
 
 	/* Emulates sound hardware up to a specified time, ends current time
 	frame, then starts a new frame at time 0 */
 
-	if(SOUND_CLOCK_TICKS > gb_apu.last_time)
-		gb_apu_run_until_( SOUND_CLOCK_TICKS );
+	if(ticks > gb_apu.last_time)
+		gb_apu_run_until_( ticks );
 
-	gb_apu.frame_time -= SOUND_CLOCK_TICKS;
-	gb_apu.last_time -= SOUND_CLOCK_TICKS;
+	gb_apu.frame_time -= ticks;
+	gb_apu.last_time -= ticks;
 
-	bufs_buffer[2].offset_ += SOUND_CLOCK_TICKS * bufs_buffer[2].factor_;
-	bufs_buffer[1].offset_ += SOUND_CLOCK_TICKS * bufs_buffer[1].factor_;
-	bufs_buffer[0].offset_ += SOUND_CLOCK_TICKS * bufs_buffer[0].factor_;
+	bufs_buffer[2].offset_ += ticks * bufs_buffer[2].factor_;
+	bufs_buffer[1].offset_ += ticks * bufs_buffer[1].factor_;
+	bufs_buffer[0].offset_ += ticks * bufs_buffer[0].factor_;
 
+	//sound_flush();
+}
 
+void sound_flush()
+{
 	// dump all the samples available
 	// VBA will only ever store 1 frame worth of samples
 	int numSamples = stereo_buffer_read_samples( (int16_t*) soundFinalWave, stereo_buffer_samples_avail());

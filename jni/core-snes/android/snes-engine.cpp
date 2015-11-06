@@ -25,7 +25,7 @@ extern "C"
 
 extern uint16_t joypad[8];
 
-volatile static bool frameEndFlag = false;
+volatile int g_FrameEndCounter = 0;
 static cEmuBitmap *thisBitmap = NULL;
 
 void mallocInit(t_emuAllocators *allocators);
@@ -50,7 +50,7 @@ public:
 	virtual bool loadNvm(const char *file);
 	virtual bool saveSnapshot(const char *file);
 	virtual bool loadSnapshot(const char *file);
-	virtual void runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount);
+	virtual void runFrame(cEmuBitmap *curBitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount);
 	virtual bool setOption(const char *name, const char *value);
 	virtual bool addCheat(const char *cheat);
 	virtual bool removeCheat(const char *cheat);
@@ -197,7 +197,7 @@ t_romInfo *SNESEngine::loadRomBuffer(const void *buf, int size, t_systemRegion s
 	LOGI("snapshot size = 0x%X\n", mSnapshotSize);
 
 	mRomInfo.fps = (Settings.PAL) ? 21281370.0 / 425568.0 : 21477272.0 / 357366.0;
-	mRomInfo.soundRate = 32040.5;
+	mRomInfo.soundRate = 32040;
 	mRomInfo.soundMaxBytesPerFrame = ((mRomInfo.soundRate / 50) + 1) * 2 * sizeof(short);
 	mRomInfo.aspectRatio = 4.0 / 3.0;
 
@@ -226,6 +226,14 @@ t_romInfo *SNESEngine::loadRomFile(const char *file, t_systemRegion systemRegion
 	mRomBuf = (uint8_t *)malloc(MAX_ROM_SIZE + 0x200 + 0x8000);
 	assert(mRomBuf != NULL);
 	memset(mRomBuf, 0,  MAX_ROM_SIZE + 0x200 + 0x8000);
+
+	if(!strcasecmp(&file[strlen(file)-4], ".smc") && (romSize % 1024) == 512)
+	{
+		LOGI("skipping header for SMC file");
+		fseek(fd, 512, SEEK_SET);
+		romSize -= 512;
+	}
+
 	int rv = fread(&mRomBuf[0x8000], 1, romSize, fd);
 	fclose(fd);
 	if(rv != romSize)
@@ -355,14 +363,10 @@ bool SNESEngine::loadNvm(const char *file)
 		int bufSize;
 		if(readFile(file, &tmpBuf, &bufSize) == true)
 		{
-			if(bufSize == size)
-			{
-				memcpy(Memory.SRAM, tmpBuf, size);
-			}
-			else
-			{
-				LOGE("SRAM save file size invalid\n");
-			}
+			if(bufSize > size)
+				bufSize = size;
+
+			memcpy(Memory.SRAM, tmpBuf, bufSize);
 			free(tmpBuf);
 		}
 		updateSramCRC();
@@ -408,8 +412,16 @@ bool SNESEngine::loadSnapshot(const char *file)
 	return true;
 }
 
-void SNESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount)
+void SNESEngine::runFrame(cEmuBitmap *curBitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount)
 {
+	// sometimes S9xMainLoop() can run for longer than a single frame, in which case we need to re-sync the main emulation loop
+	if(g_FrameEndCounter > 0)
+	{
+		*soundSampleByteCount = 0;
+		g_FrameEndCounter--;
+		return;
+	}
+
 	if(curBitmap == NULL)
 	{
 		thisBitmap = NULL;
@@ -421,12 +433,21 @@ void SNESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState,
 		IPPU.RenderThisFrame = TRUE;
 	}
 
-	int thisConnectState = ctrlState.padConnectMask | ((ctrlState.mouse.connected & 1) << 16);
+	t_emuInputMouseState mouseState;
+	memset(&mouseState, 0, sizeof(t_emuInputMouseState));
+	for(int i = 0; i < ctrlState.specialStateNum; i++)
+		if(ctrlState.specialStates[i]->type == INPUT_SNES_MOUSE && ctrlState.specialStates[i]->stateLen == sizeof(t_emuInputMouseState))
+		{
+			memcpy(&mouseState, ctrlState.specialStates[i], sizeof(t_emuInputMouseState));
+			break;
+		}
+
+	int thisConnectState = ctrlState.padConnectMask | ((mouseState.connected & 1) << 16);
 	if(mLastCtrlConnect != thisConnectState)
 	{
 		S9xUnmapAllControls();
 
-		if(ctrlState.mouse.connected)
+		if(mouseState.connected)
 		{
 			if(mUseAltMouseConfig)
 			{
@@ -452,10 +473,10 @@ void SNESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState,
 		mLastCtrlConnect = thisConnectState;
 	}
 
-	if(ctrlState.mouse.connected)
+	if(mouseState.connected)
 	{
-		mMouseX += ctrlState.mouse.xoff;
-		mMouseY += ctrlState.mouse.yoff;
+		mMouseX += mouseState.xoff;
+		mMouseY += mouseState.yoff;
 		s9xcommand_t cmd;
 		memset(&cmd, 0, sizeof(cmd));
 		cmd.type = S9xPointer;
@@ -465,11 +486,11 @@ void SNESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState,
 		memset(&cmd, 0, sizeof(cmd));
 		cmd.type = S9xButtonMouse;
 		cmd.commandunion.button.mouse.left = 1;
-		S9xApplyCommand(cmd, ctrlState.mouse.buttons & MOUSE_BUTTON_LEFT, 0);
+		S9xApplyCommand(cmd, mouseState.buttons & MOUSE_BUTTON_LEFT, 0);
 		memset(&cmd, 0, sizeof(cmd));
 		cmd.type = S9xButtonMouse;
 		cmd.commandunion.button.mouse.right = 1;
-		S9xApplyCommand(cmd, ctrlState.mouse.buttons & MOUSE_BUTTON_RIGHT, 0);
+		S9xApplyCommand(cmd, mouseState.buttons & MOUSE_BUTTON_RIGHT, 0);
 	}
 	else
 	{
@@ -506,23 +527,42 @@ void SNESEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState,
 	    	joypad[i] |= SNES_TR_MASK;
 	}
 
-    frameEndFlag = false;
 	do
 	{
-		S9xMainLoop();
-	} while(frameEndFlag == false);
+	S9xMainLoop();
+	} while(!g_FrameEndCounter);
 	S9xSyncSound();
+	g_FrameEndCounter--;
 
 	if(soundBuffer)
 	{
 		S9xFinalizeSamples();
 		int sampleCount = S9xGetSampleCount();
+//		LOGI("sampleCount = %d\n", sampleCount);
 		if(S9xMixSamples(soundBuffer, sampleCount) == 0)
 		{
 			LOGE("S9xMixSamples failed\n");
 		}
 		*soundSampleByteCount = sampleCount * sizeof(short);
 	}
+
+#if 0
+	// sound output verification
+	{
+		static int sampleCounter = 0;
+		static int frameCounter = 0;
+
+		sampleCounter += sampleCount / 2;
+		frameCounter++;
+		if(frameCounter == 60)
+		{
+			LOGI("snes sound stats: %d\n", sampleCounter);
+			sampleCounter = 0;
+			frameCounter = 0;
+		}
+	}
+#endif
+
 }
 
 bool SNESEngine::setOption(const char *name, const char *value)
@@ -593,7 +633,6 @@ void S9xDeinitUpdate(int width, int height)
 		for(int i = 0; i < height; i++)
 			memcpy(&dst[i * GFX.Pitch], &src[i * GFX.Pitch], width * sizeof(uint16_t));
 	}
-	frameEndFlag = true;
 }
 
 static void S9xAudioCallback()

@@ -3281,6 +3281,9 @@ bool gbWriteBatteryFile(const char *file, bool extendedSave)
     case 0xff:
       gbWriteSaveMBC1(file);
       break;
+    case 0xfe:
+      gbWriteSaveMBC1(file);
+      break;
     }
   }
   return true;
@@ -3378,6 +3381,9 @@ bool gbReadBatteryFile(const char *file)
       res = true;
       break;
     case 0xff:
+      res = gbReadSaveMBC1(file);
+      break;
+    case 0xfe:
       res = gbReadSaveMBC1(file);
       break;
     }
@@ -4328,6 +4334,7 @@ bool gbUpdateSizes()
   case 0x1e:
   case 0x22:
   case 0xfd:
+  case 0xfe:
   case 0xff:
     gbBattery = 1;
     break;
@@ -5268,7 +5275,7 @@ int gbEmulate(int ticksToStop)
 	if ( !gbSpeed )
 		soundTicks -= clockTicks;
 
-    while(soundTicks < 0) {
+    while(soundTicks <= 0) {
       soundTicks += SOUND_CLOCK_TICKS;
 
       gbSoundTick();

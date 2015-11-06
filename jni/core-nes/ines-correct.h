@@ -1,6 +1,5 @@
 #ifndef __INES_INCORRECT_H_
 #define __INES_INCORRECT_H_
-
 	{0xCA6A7BF1,	 -1,		1}, /* Sky Kid (Japan) */
 	{0x4E22368D,	 -1,		4}, /* Top Gun (USA) */
 	{0xD78BFB28,	 -1,		4}, /* Top Gun (Europe) */
@@ -179,11 +178,8 @@
 	{0x026c5fca,	152,		8},	/* Saint Seiya Ougon Densetsu */
 	{0x3f15d20d,	153,		8},	/* Famicom Jump 2 */
 	{0xb7f28915,	159,	   -1},	/* Magical Taruruuto-kun 2 - Mahou Daibouken (J) */
-	{0xa262a81f,	153,	   -1},	/* Rokudenashi Blues (J) */
 	{0xe170404c,	159,	   -1},	/* SD Gundam Gaiden - Knight Gundam Monogatari (J) (V1.0) [!] */
 	{0x276ac722,	159,	   -1},	/* SD Gundam Gaiden - Knight Gundam Monogatari (J) (V1.1) [!] */
-	{0xb049a8c4,	153,	   -1},	/* SD Gundam Gaiden - Knight Gundam Monogatari 2 - Hikari no Kishi (J) [!] */
-	{0xc2840372,	153,	   -1},	/* SD Gundam Gaiden - Knight Gundam Monogatari 3 - Densetsu no Kishi Dan (J) [!] */
 	{0xd1691028,	154,		8},	/* Devil Man */
 	{0xcfd4a281,	155,		8},	/* Money Game.  Yay for money! */
 	{0x2f27cdef,	155,		8},	/* Tatakae!! Rahmen Man */
@@ -244,7 +240,7 @@
 	{0x2447e03b,	210,		1},	/* Top Striker */
 	{0x1dc0f740,	210,		1},	/* Wagyan Land 2 */
 	{0xd323b806,	210,		1},	/* Wagyan Land 3 */
-	{0xbd523011,	210,		2},	/* Dream Master */
+	{0xbd523011,	210,		0},	/* Dream Master */
 	{0x5daae69a,	211,	   -1},	/* Aladdin - Return of Jaffar, The (Unl) [!] */
 	{0x1ec1dfeb,	217,	   -1}, /* 255-in-1 (Cut version) [p1] */
 	{0x046d70cc,	217,	   -1}, /* 500-in-1 (Anim Splash, Alt Mapper)[p1][!] */

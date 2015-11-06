@@ -105,7 +105,7 @@ public:
 	virtual bool loadNvm(const char *file);
 	virtual bool saveSnapshot(const char *file);
 	virtual bool loadSnapshot(const char *file);
-	virtual void runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount);
+	virtual void runFrame(cEmuBitmap *curBitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount);
 	virtual bool setOption(const char *name, const char *value);
 	virtual bool addCheat(const char *cheat);
 	virtual bool removeCheat(const char *cheat);
@@ -225,6 +225,19 @@ t_romInfo *GameboyEngine::loadRomFile(const char *file, t_systemRegion systemReg
 	}
 
 	bool romSupportsSGB = ((gbRom[0x146] == 0x03) && (gbRom[0x14B] == 0x33));
+
+	static const char *FORCE_DISABLE_SGB[] =
+	{
+		"OHASTA Y&R",
+	};
+	for(int i = 0; i < (sizeof(FORCE_DISABLE_SGB)/sizeof(char *)); i++)
+		if(!strncmp((const char *)&gbRom[0x134], FORCE_DISABLE_SGB[i], 11))
+		{
+			LOGI("this game is SGB blacklisted\n");
+			romSupportsSGB = false;
+			break;
+		}
+
 	if((mTargetEmuType == 0 || mTargetEmuType == 2) && mSgbBorders && romSupportsSGB)
 	{
 		gbBorderOn = 1;
@@ -263,7 +276,7 @@ t_romInfo *GameboyEngine::loadRomFile(const char *file, t_systemRegion systemReg
 
 	mRomInfo.fps = 4194304.0 / (double)GAMEBOY_FRAME_CYCLES;
 	mRomInfo.aspectRatio = (double)srcWidth / (double)srcHeight;
-	mRomInfo.soundRate = (double)(GAMEBOY_SOUND_RATE - 2);
+	mRomInfo.soundRate = GAMEBOY_SOUND_RATE;
 	mRomInfo.soundMaxBytesPerFrame = sizeof(sampleBuffer);
 
 	mLastClockOffset = 0;
@@ -352,7 +365,7 @@ bool GameboyEngine::loadSnapshot(const char *file)
 	return ret;
 }
 
-void GameboyEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlState, short *soundBuffer, int *soundSampleByteCount)
+void GameboyEngine::runFrame(cEmuBitmap *curBitmap, t_emuInputState ctrlState, short *soundBuffer, int *soundSampleByteCount)
 {
 	if(curBitmap == NULL)
 	{
@@ -397,13 +410,31 @@ void GameboyEngine::runFrame(cEmuBitmap *curBitmap, t_emuControllerState ctrlSta
 	sampleCurrentBytes = 0;
 	int ticksPerFrame = (gbSpeed) ? GAMEBOY_FRAME_CYCLES / 2 : GAMEBOY_FRAME_CYCLES / 4;
 	mLastClockOffset = emulator.emuMain(ticksPerFrame - mLastClockOffset);
+	gbSoundFlush();
 
 	if(soundBuffer)
 	{
 		memcpy(soundBuffer, sampleBuffer, sampleCurrentBytes);
 		*soundSampleByteCount = sampleCurrentBytes;
 	}
-//	LOGI("frame end, sample bytes = %d\n", sampleCurrentBytes);
+//	LOGI("frame end, clk off = %d, sample bytes = %d\n", mLastClockOffset, sampleCurrentBytes);
+
+#if 1
+	// sound output verification
+	{
+		static int sampleCounter = 0;
+		static int frameCounter = 0;
+
+		sampleCounter += sampleCurrentBytes / 4;
+		frameCounter++;
+		if(frameCounter == 60*60)
+		{
+			LOGI("gameboy sound stats: %d\n", sampleCounter / 60);
+			sampleCounter = 0;
+			frameCounter = 0;
+		}
+	}
+#endif
 }
 
 void GameboyEngine::drawScreen()
@@ -675,7 +706,6 @@ void systemGbPrint(u8 *,int,int,int,int,int) { }
 void systemScreenCapture(int) { }
 //void systemMessage(int, const char *, ...) { }
 void systemSetTitle(const char *) { }
-void systemOnWriteDataToSoundBuffer(const u16 * finalWave, int length) { }
 void systemOnSoundShutdown() { }
 void systemScreenMessage(const char *) { }
 void systemShowSpeed(int) { }
@@ -719,8 +749,16 @@ void SoundRetron::resume()
 void SoundRetron::write(u16 * finalWave, int length)
 {
 //	LOGI("SoundRetron::write - %d, %d\n", GameboyEngine::sampleCurrentBytes, length);
-	memcpy(&GameboyEngine::sampleBuffer[GameboyEngine::sampleCurrentBytes / 2], finalWave, length);
-	GameboyEngine::sampleCurrentBytes += length;
+//	memcpy(&GameboyEngine::sampleBuffer[GameboyEngine::sampleCurrentBytes / 2], finalWave, length);
+//	GameboyEngine::sampleCurrentBytes += length;
+}
+
+void systemOnWriteDataToSoundBuffer(const u16 * finalWave, int length)
+{
+//	LOGI("systemOnWriteDataToSoundBuffer - %d, %d\n", GameboyEngine::sampleCurrentBytes, length * sizeof(short));
+	uint8_t *dst = (uint8_t *)GameboyEngine::sampleBuffer;
+	memcpy(&dst[GameboyEngine::sampleCurrentBytes], finalWave, length * sizeof(short));
+	GameboyEngine::sampleCurrentBytes += length * sizeof(short);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

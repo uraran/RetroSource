@@ -129,8 +129,8 @@ void FCEU_PutImage(void) {
 	DrawMessage();
 	FCEU_DrawInput(XBuf);
 }
-#if 0
-void FCEU_DispMessage(char *format, ...) {
+#if 1
+void FCEU_DispMessageReal(char *format, ...) {
 	va_list ap;
 
 	va_start(ap, format);
