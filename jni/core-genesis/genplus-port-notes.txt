@@ -1,0 +1,108 @@
+possibly relevant changes since r598
+====================================
+
+sound stuff
+-----------
+
+fm_update: sample count calculation same effect, dest buffer handling different
+
+
+
+blip_t* blips[3][2]; -- [0] = SN76489 and FM mixed, [1],[2] = CDDA -- we only need 2 bufs, one left/right
+
+
+
+system.c
+--------
+
+- lots of stuff for GG support
+- sms/gg: Sprites are still processed during vertical borders
+- sms/gg: frame rendering modified a lot for accuracy
+
+
+diffs between libretro and base
+-------------------------------
+
+diff between working 68k and non-working
+----------------------------------------
+
+- void m68k_op_move16_32(void) removed in new
+- div cycle counting
+- var sign in div opcodes
+
+---------------
+
+YM2612 same size
+YM2612LoadContext appears the same
+YM2413 same?
+SN76489_Context DIFFERENT!
+
+m68k.int_level: high 8 bit = cpu int, low 8 bit = unused?
+m68k_irq_state: 
+
+
+old MD:
+
+01-01 08:04:32.892: I/core-genesis(17828): >> 1 off: 16
+01-01 08:04:32.892: I/core-genesis(17828): >> 2 off: 73749
+01-01 08:04:32.892: I/core-genesis(17828): >> 3 off: 73765
+01-01 08:04:32.892: I/core-genesis(17828): >> 4 off: 140650
+01-01 08:04:32.892: I/core-genesis(17828): snd 1: 0
+01-01 08:04:32.892: I/core-genesis(17828): snd 2: 3384
+01-01 08:04:32.892: I/core-genesis(17828): snd 4: 3568
+01-01 08:04:32.892: I/core-genesis(17828): >> 5 off: 144222
+01-01 08:04:32.892: I/core-genesis(17828): >> 6 off: 144300
+01-01 08:04:32.892: I/core-genesis(17828): >> 7 off: 144312
+01-01 08:04:32.892: I/core-genesis(17828): >> 8 off: 144388
+01-01 08:04:32.892: I/core-genesis(17828): >> 9 off: 144456
+
+
+
+old
+
+typedef struct
+{
+  /* Configuration */
+  int PreAmp[4][2];       /* stereo channels pre-amplification ratio (%) */
+  int NoiseFeedback;
+  int SRWidth;
+
+  /* PSG registers: */
+  int Registers[8];       /* Tone, vol x4 */
+  int LatchedRegister;
+  int NoiseShiftRegister;
+  int NoiseFreq;          /* Noise channel signal generator frequency */
+
+  /* Output calculation variables */
+  int ToneFreqVals[4];    /* Frequency register values (counters) */
+  int ToneFreqPos[4];     /* Frequency channel flip-flops */
+  int Channel[4][2];      /* current amplitude of each (stereo) channel */
+  int ChanOut[4][2];      /* current output value of each (stereo) channel */
+
+  /* Internal M-clock counter */
+  unsigned long clocks;
+
+} SN76489_Context;
+
+
+new
+
+typedef struct
+{
+  /* Configuration */
+  int BoostNoise;         /* double noise volume when non-zero */
+
+  /* PSG registers: */
+  int Registers[8];       /* Tone, vol x4 */
+  int LatchedRegister;
+  int NoiseShiftRegister;
+  int NoiseFreq;          /* Noise channel signal generator frequency */
+
+  /* Output calculation variables */
+  int ToneFreqVals[4];    /* Frequency register values (counters) */
+  int ToneFreqPos[4];     /* Frequency channel flip-flops */
+  int Channels[4];        /* Value of each channel, before stereo is applied */
+
+  /* Blip-Buffer variables */
+  int chan_amp[4];        /* current channel amplitudes in delta buffers */
+} SN76489_Context;
